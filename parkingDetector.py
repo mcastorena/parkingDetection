@@ -128,9 +128,9 @@ class parkingDetector:
             elif k == ord('c'):
                 cv2.imwrite('frame%d.jpg' % currentFrame, frameOut)
             elif k == ord('j'):
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, currentFrame + 1000)  # jump 1000 frames
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, currentFrame + 500)  # jump 500 frames forward
             elif k == ord('u'):
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, currentFrame + 500)  # jump 500 frames
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, currentFrame - 500)  # jump 500 frames back
             if cv2.waitKey(33) == 27:
                 break
 
@@ -193,8 +193,3 @@ class parkingDetector:
 
                 self.parkingStatus = [False] * len(self.parkingSpaceData)            # Initialize parkingStatus with length of parking spaces read and initialize all parking sports as occupied
                 self.parkingBuffer = [None] * len(self.parkingSpaceData)             # Initialize parkingBuffer
-
-
-
-
-
