@@ -68,14 +68,6 @@ class parkingDetector:
                 points = np.array(park['points'])  # get coordinates for that parking spaces bounding corners
                 rect = self.parkingSpaceBoundingRectangles[index]  # load rectangle for parking space at index = index
                 roi_gray = grayGBlur[rect[1]:(rect[1] + rect[3]), rect[0]:(rect[0] + rect[2])]  # Crop ROI from frame using boundary points
-                # laplacian = cv2.Laplacian(roi_gray, cv2.CV_64F)
-                # points[:, 0] = points[:, 0] - rect[0]                                           # shift contour to roi
-                # points[:, 1] = points[:, 1] - rect[1]
-                # delta = np.mean(np.abs(laplacian * self.parkingMask[index]))
-                # if delta < self.parkingThreshold:                                               # If an object is detected in the spot
-                #     status = self.runClassifier(roi_gray)                                       # Run classifier to see if a car is in the spot
-                # else:
-                #     status = True                                                              # If no object is detected in the space then its vacant
                 status = self.runClassifier(roi_gray)
 
                 # If detected a change in parking status, save the current time
