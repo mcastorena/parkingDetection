@@ -28,7 +28,7 @@ class parkingDetector:
         self.erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))   # Initialize morphological kernels
         self.dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 19))    # erode is used to remove white noise (but also shrinks our object) and dilate to expand our shrunk objects
 
-        self.parkingThreshold = 2.8
+        self.parkingThreshold = 3.5
         self.secsToWait = 2
 
         self.URL = ""                                                        # Server URL and port
@@ -68,6 +68,14 @@ class parkingDetector:
                 points = np.array(park['points'])  # get coordinates for that parking spaces bounding corners
                 rect = self.parkingSpaceBoundingRectangles[index]  # load rectangle for parking space at index = index
                 roi_gray = grayGBlur[rect[1]:(rect[1] + rect[3]), rect[0]:(rect[0] + rect[2])]  # Crop ROI from frame using boundary points
+                # laplacian = cv2.Laplacian(roi_gray, cv2.CV_64F)
+                # points[:, 0] = points[:, 0] - rect[0]                                           # shift contour to roi
+                # points[:, 1] = points[:, 1] - rect[1]
+                # delta = np.mean(np.abs(laplacian * self.parkingMask[index]))
+                # if delta < self.parkingThreshold:                                               # If an object is detected in the spot
+                #     status = self.runClassifier(roi_gray)                                       # Run classifier to see if a car is in the spot
+                # else:
+                #     status = True                                                              # If no object is detected in the space then its vacant
                 status = self.runClassifier(roi_gray)
 
                 # If detected a change in parking status, save the current time
@@ -118,38 +126,7 @@ class parkingDetector:
                     cv2.putText(frameOut, str(space['id']), (centroid[0] - 1, centroid[1] + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
                     cv2.putText(frameOut, str(space['id']), centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-            # if self.parkingDataMotion != []:
-            #     for index, parkCoordinates in enumerate(self.parkingDataMotion, 0):
-            #         points = np.array(parkCoordinates['points'])
-            #         color = (0, 0, 255)
-            #         recta = self.parkingSpaceBoundingRectangles[ind]
-            #         roi_gray1 = grayGBlur[recta[1]:(recta[1] + recta[3]), recta[0]:(recta[0] + recta[2])]  # crop roi for faster calcluation
-            #         fgbg1 = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=16, detectShadows=True)
-            #         roi_gray1_blur = cv2.GaussianBlur(roi_gray1.copy(), (5, 5), 3)
-            #         fgmask1 = fgbg1.apply(roi_gray1_blur)
-            #         bw1 = np.uint8(fgmask1 == 255) * 255
-            #         bw1 = cv2.erode(bw1, self.erode, iterations=1)
-            #         bw1 = cv2.dilate(bw1, self.dilate, iterations=1)
-            #         (cnts1, _) = cv2.findContours(bw1.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            #         # loop over the contours
-            #         for c in cnts1:
-            #             print(cv2.contourArea(c))
-            #             # if the contour is too small, we ignore it
-            #             if cv2.contourArea(c) < 4:
-            #                 continue
-            #             (x, y, w, h) = cv2.boundingRect(c)
-            #             classifier_result1 = self.runClassifier(roi_gray1)
-            #             if classifier_result1:
-            #                 color = (0, 0, 255)  # Red again if car found by classifier
-            #             else:
-            #                 color = (0, 255, 0)
-            #         classifier_result1 = self.runClassifier(roi_gray1)
-            #         if classifier_result1:
-            #             color = (0, 0, 255)  # Red again if car found by classifier
-            #         else:
-            #             color = (0, 255, 0)
-            #         cv2.drawContours(frameOut, [points], contourIdx=-1,
-            #                          color=color, thickness=2, lineType=cv2.LINE_8)
+
 
             # Display video
             cv2.imshow('frame', frameOut)
@@ -173,9 +150,9 @@ class parkingDetector:
     def runClassifier(self, img):
         cars = self.carCascade.detectMultiScale(img, 1.1, 1)
         if cars == ():
-            return False
-        else:
             return True
+        else:
+            return False
 
     def postStatus(self):
         print("Sending status data...")
