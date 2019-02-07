@@ -3,7 +3,8 @@ import numpy as np
 import cv2
 import json
 from parkingSpaceBoundary import parkingSpaceBoundary
-import os.path
+from os.path import isfile
+from requests import post
 
 class parkingDetector:
     def __init__(self, videoFile, classifierXML, ymlFile, jsonFile):
@@ -12,7 +13,7 @@ class parkingDetector:
         self.jsonFilePath = jsonFile
         self.carCascade = cv2.CascadeClassifier(classifierXML)
 
-        self.parkingOverlay = False
+        self.parkingOverlay = True
         self.parkingSpaceData = []
         self.parkingData = {}
         self.parkingCountours = []
@@ -27,8 +28,12 @@ class parkingDetector:
         self.erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))   # Initialize morphological kernels
         self.dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 19))    # erode is used to remove white noise (but also shrinks our object) and dilate to expand our shrunk objects
 
-        self.parkLaplacianTh = 2.8
+        self.parkingThreshold = 2.8
         self.secsToWait = 2
+
+        self.URL = ""                                                        # Server URL and port
+        self.authenticationToken = ""                                        # Authentication Token file location
+        self.cameraNum = 10                                                  # Camera number used to identify where the info is coming from
 
 
     def run(self):
@@ -63,7 +68,7 @@ class parkingDetector:
                 points = np.array(park['points'])  # get coordinates for that parking spaces bounding corners
                 rect = self.parkingSpaceBoundingRectangles[index]  # load rectangle for parking space at index = index
                 roi_gray = grayGBlur[rect[1]:(rect[1] + rect[3]), rect[0]:(rect[0] + rect[2])]  # Crop ROI from frame using boundary points
-                status = self.runClassifier(roi_gray)                                           # Run classifier to detect cars in spaces
+                status = self.runClassifier(roi_gray)
 
                 # If detected a change in parking status, save the current time
                 if status != self.parkingStatus[index] and self.parkingBuffer[index] == None:
@@ -95,63 +100,56 @@ class parkingDetector:
             # Overlays parking space boundary lines and ID numbers on the frames displayed
             # Works well for testing but unnecessarily uses up resources for cameras in actual lots
             if self.parkingOverlay:
-                for ind, park in enumerate(self.parkingSpaceData):
-                    points = np.array(park['points'])
+                for ind, space in enumerate(self.parkingSpaceData):
                     if self.parkingStatus[ind]:
-                        color = (0, 255, 0)
-                        rect = self.parkingSpaceBoundingRectangles[ind]
-                        roi_gray_ov = grayGBlur[rect[1]:(rect[1] + rect[3]), rect[0]:(rect[0] + rect[2])]  # crop roi for faster calcluation
-                        res = self.runClassifier(roi_gray_ov)
-                        if res:
-                            self.parkingDataMotion.append(self.parkingSpaceData[ind])
-                            color = (0, 0, 255)
+                        color = (0, 255, 0)                                 # If status is True (vacant) then color = green
                     else:
-                        color = (0, 0, 255)
+                        color = (0, 0, 255)                                 # Else color is red
 
-                    cv2.drawContours(frameOut, [points], contourIdx=-1, color=color, thickness=2, lineType=cv2.LINE_8)
-
+                    points = np.array(space['points'])                      # Get space's boundary points
+                    cv2.drawContours(frameOut, [points], contourIdx=-1, color=color, thickness=2, lineType=cv2.LINE_8)          # Draw boundary box
 
                     moments = cv2.moments(points)
                     centroid = (int(moments['m10'] / moments['m00']) - 3, int(moments['m01'] / moments['m00']) + 3)
-                    # putting numbers on marked regions
-                    cv2.putText(frameOut, str(park['id']), (centroid[0] + 1, centroid[1] + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-                    cv2.putText(frameOut, str(park['id']), (centroid[0] - 1, centroid[1] - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-                    cv2.putText(frameOut, str(park['id']), (centroid[0] + 1, centroid[1] - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-                    cv2.putText(frameOut, str(park['id']), (centroid[0] - 1, centroid[1] + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-                    cv2.putText(frameOut, str(park['id']), centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
+                    # Putting numbers on marked regions
+                    cv2.putText(frameOut, str(space['id']), (centroid[0] + 1, centroid[1] + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.putText(frameOut, str(space['id']), (centroid[0] - 1, centroid[1] - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.putText(frameOut, str(space['id']), (centroid[0] + 1, centroid[1] - 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.putText(frameOut, str(space['id']), (centroid[0] - 1, centroid[1] + 1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.putText(frameOut, str(space['id']), centroid, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
-            if self.parkingDataMotion != []:
-                for index, parkCoordinates in enumerate(self.parkingDataMotion, 0):
-                    points = np.array(parkCoordinates['points'])
-                    color = (0, 0, 255)
-                    recta = self.parkingSpaceBoundingRectangles[ind]
-                    roi_gray1 = grayGBlur[recta[1]:(recta[1] + recta[3]), recta[0]:(recta[0] + recta[2])]  # crop roi for faster calcluation
-                    fgbg1 = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=16, detectShadows=True)
-                    roi_gray1_blur = cv2.GaussianBlur(roi_gray1.copy(), (5, 5), 3)
-                    fgmask1 = fgbg1.apply(roi_gray1_blur)
-                    bw1 = np.uint8(fgmask1 == 255) * 255
-                    bw1 = cv2.erode(bw1, self.erode, iterations=1)
-                    bw1 = cv2.dilate(bw1, self.dilate, iterations=1)
-                    (cnts1, _) = cv2.findContours(bw1.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    # loop over the contours
-                    for c in cnts1:
-                        print(cv2.contourArea(c))
-                        # if the contour is too small, we ignore it
-                        if cv2.contourArea(c) < 4:
-                            continue
-                        (x, y, w, h) = cv2.boundingRect(c)
-                        classifier_result1 = self.runClassifier(roi_gray1)
-                        if classifier_result1:
-                            color = (0, 0, 255)  # Red again if car found by classifier
-                        else:
-                            color = (0, 255, 0)
-                    classifier_result1 = self.runClassifier(roi_gray1)
-                    if classifier_result1:
-                        color = (0, 0, 255)  # Red again if car found by classifier
-                    else:
-                        color = (0, 255, 0)
-                    cv2.drawContours(frameOut, [points], contourIdx=-1,
-                                     color=color, thickness=2, lineType=cv2.LINE_8)
+            # if self.parkingDataMotion != []:
+            #     for index, parkCoordinates in enumerate(self.parkingDataMotion, 0):
+            #         points = np.array(parkCoordinates['points'])
+            #         color = (0, 0, 255)
+            #         recta = self.parkingSpaceBoundingRectangles[ind]
+            #         roi_gray1 = grayGBlur[recta[1]:(recta[1] + recta[3]), recta[0]:(recta[0] + recta[2])]  # crop roi for faster calcluation
+            #         fgbg1 = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=16, detectShadows=True)
+            #         roi_gray1_blur = cv2.GaussianBlur(roi_gray1.copy(), (5, 5), 3)
+            #         fgmask1 = fgbg1.apply(roi_gray1_blur)
+            #         bw1 = np.uint8(fgmask1 == 255) * 255
+            #         bw1 = cv2.erode(bw1, self.erode, iterations=1)
+            #         bw1 = cv2.dilate(bw1, self.dilate, iterations=1)
+            #         (cnts1, _) = cv2.findContours(bw1.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            #         # loop over the contours
+            #         for c in cnts1:
+            #             print(cv2.contourArea(c))
+            #             # if the contour is too small, we ignore it
+            #             if cv2.contourArea(c) < 4:
+            #                 continue
+            #             (x, y, w, h) = cv2.boundingRect(c)
+            #             classifier_result1 = self.runClassifier(roi_gray1)
+            #             if classifier_result1:
+            #                 color = (0, 0, 255)  # Red again if car found by classifier
+            #             else:
+            #                 color = (0, 255, 0)
+            #         classifier_result1 = self.runClassifier(roi_gray1)
+            #         if classifier_result1:
+            #             color = (0, 0, 255)  # Red again if car found by classifier
+            #         else:
+            #             color = (0, 255, 0)
+            #         cv2.drawContours(frameOut, [points], contourIdx=-1,
+            #                          color=color, thickness=2, lineType=cv2.LINE_8)
 
             # Display video
             cv2.imshow('frame', frameOut)
@@ -179,10 +177,19 @@ class parkingDetector:
         else:
             return True
 
+    def postStatus(self):
+        print("Sending status data...")
+        head = {'Authorization': self.authenticationToken}
+        body = {'Camera': self.cameraNum, 'status':self.jsonFilePath}                       # Need to parse jsonFile first, will do later
+        try:
+            msgResponse = post(self.URL, headers= head, data= body)                         # Post message
+        except:
+            raise ValueError('Status could not be posted')                                  # If post message fails catch error and print message
+
 
     def openYML(self):
         # Read YAML data (parking space polygons)
-        if os.path.isfile(self.parkingSpaceYML):  # If yml file exists open it and load parking space data
+        if isfile(self.parkingSpaceYML):  # If yml file exists open it and load parking space data
             with open(self.parkingSpaceYML, 'r') as stream:
                 self.parkingSpaceData = yaml.load(stream)
         else:  # Else create yml file then load it
