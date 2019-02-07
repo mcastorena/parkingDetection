@@ -52,10 +52,10 @@ class parkingDetector:
 
             success, initialFrame = self.cap.read()                                  # Capture frame
             if success:
-                frame = cv2.resize(initialFrame, None, fx=0.6, fy=0.6)          # If frame capture is successful resize frame
+                frame = initialFrame              
             else:
                 print("Video ended")
-                break
+                raise SystemExit
 
             # Background subtraction using grayscale gaussian blur
             frameGBlur = cv2.GaussianBlur(frame.copy(), (5, 5), 3)
@@ -164,7 +164,7 @@ class parkingDetector:
         else:  # Else create yml file then load it
             success, image = self.cap.read()  # Capture frame to mark parking spaces
             if success:  # If frame can be captured
-                ymlImg = cv2.resize(image, None, fx=0.6, fy=0.6)  # Resize captured frame
+                ymlImg = image
                 mySpace = parkingSpaceBoundary(ymlImg, self.parkingSpaceYML)  # Create parkingSpaceBoundary object and pass it resized frame and destination yml file path
                 mySpace.markSpaces()  # Run function to mark parking space boundaries
                 del mySpace  # Delete object once done
