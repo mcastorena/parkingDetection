@@ -25,22 +25,16 @@ class parkingDetector:
 
         self.cap = cv2.VideoCapture(self.video)                             #open video
 
-        self.erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))   # Initialize morphological kernels
-        self.dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 19))    # erode is used to remove white noise (but also shrinks our object) and dilate to expand our shrunk objects
-
         self.parkingThreshold = 3.5
         self.secsToWait = 2
 
         self.URL = ""                                                        # Server URL and port
-        self.authenticationToken = ""                                        # Authentication Token file location
+        self.authenticationToken = ""                                        # Authentication Token file location, must be obtained from server. Used to prevent unauthorized posts
         self.cameraNum = 10                                                  # Camera number used to identify where the info is coming from
 
 
     def run(self):
         self.openYML()                                          # Open ymlFile and save parking space boundary information
-
-        self.erode = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))   # Initialize morphological kernels
-        self.dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 19))
 
         # Parking detection begins
 
@@ -52,7 +46,7 @@ class parkingDetector:
 
             success, initialFrame = self.cap.read()                                  # Capture frame
             if success:
-                frame = initialFrame              
+                frame = initialFrame
             else:
                 print("Video ended")
                 raise SystemExit
@@ -85,12 +79,12 @@ class parkingDetector:
                         for ind, val in enumerate(self.parkingStatus):          # Copy parkingStatus contents into parkingData (dictionary)
                             self.parkingData[ind] = str(val)
                         print(self.parkingData)
-                        jsonData = json.dumps(self.parkingData)  # Dictionary to json
+                        jsonData = json.dumps(self.parkingData)  # Dictionary to json, represented as string
                         with open(self.jsonFilePath, 'w') as outfile:  # Write to JSON file
                             json.dump(jsonData, outfile)
 
                         # Send JSON file to server
-                        # self.postStatus()
+                        # self.postStatus(jsonData)                              # Send "string" parking lot statuses to push to server
 
 
                 # If status is still same and counter is open clear buffer
@@ -146,10 +140,10 @@ class parkingDetector:
         else:
             return False
 
-    def postStatus(self):
+    def postStatus(self, data):
         print("Sending status data...")
         head = {'Authorization': self.authenticationToken}
-        body = {'Camera': self.cameraNum, 'status':self.jsonFilePath}                       # Need to parse jsonFile first, will do later
+        body = {'Camera': self.cameraNum, 'status':data}
         try:
             msgResponse = post(self.URL, headers= head, data= body)                         # Post message
         except:
